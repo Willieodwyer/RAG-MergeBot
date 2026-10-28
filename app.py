@@ -13,12 +13,17 @@ import os
 from pathlib import Path
 from textwrap import dedent
 
-from huggingface_hub import InferenceClient
+from huggingface_hub import InferenceClient, HfApi
+from langchain_classic.agents import create_tool_calling_agent, AgentExecutor
 from langchain_community.document_loaders import TextLoader, DirectoryLoader
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
-from langchain_core.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate, ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.tools import Tool
+from langchain_huggingface import HuggingFaceEndpoint, ChatHuggingFace
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langgraph.prebuilt import create_react_agent
+from transformers.models.idefics import modeling_idefics
 
 from config import *
 
@@ -27,6 +32,10 @@ import torch
 import warnings
 
 VECTOR_DB_PATH = "vector_cache"
+
+query = "memory leaks resource ownership delete destructor"
+model_id = "Qwen/Qwen2.5-Coder-7B-Instruct"
+embedding_model = "BAAI/bge-small-en-v1.5"
 
 if __name__ == "__main__":
     warnings.filterwarnings("ignore")
@@ -43,17 +52,18 @@ if __name__ == "__main__":
 
     print(f"Start embeddings...")
     embeddings = HuggingFaceEmbeddings(
-        model_name="BAAI/bge-small-en-v1.5",
+        model_name=embedding_model,
         model_kwargs={"device": "cuda"},
         encode_kwargs={
             "batch_size": 64,
         }
     )
 
-    if Path(VECTOR_DB_PATH).exists():
+    vector_path = VECTOR_DB_PATH + "/" + embedding_model
+    if Path(vector_path).exists():
         print("Loading vector store...")
         vector_store = FAISS.load_local(
-            VECTOR_DB_PATH,
+            vector_path,
             embeddings,
             allow_dangerous_deserialization=True
         )
@@ -83,20 +93,20 @@ if __name__ == "__main__":
         print(f"Split documents...")
         chunks = text_splitter.split_documents(documents)
 
+        print("Generating vector store...")
         vector_store = FAISS.from_documents(
             chunks,
             embeddings
         )
 
-        vector_store.save_local(VECTOR_DB_PATH)
-        print("Saved vector store")
+        vector_store.save_local(vector_path)
+        print("Saved vector store!")
 
     retriever = vector_store.as_retriever(
         search_kwargs={"k": 3}
     )
 
-    question = "Are there any memory leaks in the code?"
-    docs = retriever.invoke(question)
+    docs = retriever.invoke(query)
 
     context = "\n".join(
         doc.page_content for doc in docs
@@ -126,11 +136,11 @@ if __name__ == "__main__":
 
     prompt = prompt_template.format(
         context=context,
-        question=question
+        question=query
     )
 
     response = client.chat.completions.create(
-        model="Qwen/Qwen2.5-Coder-7B-Instruct",
+        model=model_id,
         messages=[
             {
                 "role": "user",
