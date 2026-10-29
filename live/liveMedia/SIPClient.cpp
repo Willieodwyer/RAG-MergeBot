@@ -133,6 +133,7 @@ SIPClient::~SIPClient() {
   delete[] (char*)fOurAddressStr;
   delete[] (char*)fApplicationName;
   delete[] (char*)fMIMESubtype;
+  delete[] (char*)fUserName;
 }
 
 void SIPClient::reset() {
