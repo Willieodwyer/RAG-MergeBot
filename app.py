@@ -26,18 +26,19 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from config import *
 
 VECTOR_DB_PATH = "vector_cache"
+MAX_NEW_TOKENS = 20480
 
 model_id = "openai/gpt-oss-120b"
 model_id = "meta-llama/Llama-3.1-8B-Instruct"
 model_id = "Qwen/Qwen2.5-72B-Instruct"
 model_id = "deepseek-ai/DeepSeek-V4.1-Flash-1017" # Good model
 model_id = "moonshotai/Kimi-K2.7-Code" # VERY EXPENSIVE - Did not find a legitimate leak
+model_id = "Qwen/Qwen3.8-2.4T-A95B" # Too big - Timed out
+model_id = "google/gemma-4-31B-it"
 model_id = "Qwen/Qwen3.5-122B-A10B" # Good model - Found leaks - Found MR issues - Cheap!
-model_id = "Qwen/Qwen3.8-2.4T-A95B" # Might run out of cash using this one
 
 embedding_model = "BAAI/bge-small-en-v1.5"
-user_input = '''
-diff --git a/ExternalLibraries/Live555/groupsock/NetAddress.cpp b/ExternalLibraries/Live555/groupsock/NetAddress.cpp
+user_input = '''diff --git a/ExternalLibraries/Live555/groupsock/NetAddress.cpp b/ExternalLibraries/Live555/groupsock/NetAddress.cpp
 index 8432025088..2216622e17 100644
 --- a/ExternalLibraries/Live555/groupsock/NetAddress.cpp
 +++ b/ExternalLibraries/Live555/groupsock/NetAddress.cpp
@@ -55,7 +56,7 @@ index 8432025088..2216622e17 100644
    unsigned i = 0;
    p = addrinfoResultPtr;
 diff --git a/ExternalLibraries/Live555/liveMedia/RTSPClient.cpp b/ExternalLibraries/Live555/liveMedia/RTSPClient.cpp
-index 66485b4a75..e12c846a8b 100644
+index 66485b4a75..099177b60f 100644
 --- a/ExternalLibraries/Live555/liveMedia/RTSPClient.cpp
 +++ b/ExternalLibraries/Live555/liveMedia/RTSPClient.cpp
 @@ -264,6 +264,8 @@ Boolean RTSPClient::parseRTSPURL(char const* url,
@@ -75,25 +76,27 @@ index 66485b4a75..e12c846a8b 100644
      char const* colonPasswordStart = NULL;
      char const* lastAtPtr = NULL;
      for (char const* p = from; *p != '\0' && *p != '/'; ++p) {
-@@ -774,10 +775,14 @@ Boolean RTSPClient::setRequestFields(RequestRecord* request,
+@@ -774,10 +775,15 @@ Boolean RTSPClient::setRequestFields(RequestRecord* request,
      char* password;
      NetAddress destAddress;
      portNumBits urlPortNum;
 -    if (!parseRTSPURL(fBaseURL, username, password, destAddress, urlPortNum, (char const**)&cmdURL)) return False;
+-    if (cmdURL[0] == '\0') cmdURL = (char*)"/";
+-    delete[] username;
+-    delete[] password;
 +    const bool success = parseRTSPURL(fBaseURL, username, password, destAddress, urlPortNum, (char const**)&cmdURL);
-+    delete[] username; // Not needed
-+    delete[] password; // Not needed
++    delete[] username; // Unused
++    delete[] password; // Unused
 +
 +    if (!success)
 +      return false;
 +
-     if (cmdURL[0] == '\0') cmdURL = (char*)"/";
--    delete[] username;
--    delete[] password;
++    if (cmdURL[0] == '\0')
++      cmdURL = (char*)"/";
  
      struct sockaddr_storage serverAddr;
      copyAddress(serverAddr, &destAddress);
-@@ -909,16 +914,24 @@ int RTSPClient::openConnection() {
+@@ -909,16 +915,24 @@ int RTSPClient::openConnection() {
      NetAddress destAddress;
      portNumBits urlPortNum;
      char const* urlSuffix;
@@ -212,7 +215,7 @@ if __name__ == "__main__":
     llm = HuggingFaceEndpoint(
         repo_id=model_id,
         task="text-generation",
-        max_new_tokens=2048,
+        max_new_tokens=MAX_NEW_TOKENS,
         do_sample=False,
         huggingfacehub_api_token=HF_TOKEN
     )
@@ -289,7 +292,7 @@ if __name__ == "__main__":
     tools = [get_context]
 
     # Create the tool-using agent
-    agent = create_agent(
+    merge_request_agent = create_agent(
         model=chat_model,
         tools=tools,
         system_prompt=(dedent("""\
@@ -367,7 +370,10 @@ if __name__ == "__main__":
         If no actionable defects are identified, return: No actionable findings identified.
         Optionally include a brief review limitation only when missing context materially affects confidence in the review.
         Do not include a general code-quality essay, a summary of every file changed, or a list of speculative concerns.
-        Review your final answer, and if no actionable findings are identified, simply say "No actionable findings identified."      
+        Use markdown format
+        Short, concise
+        Use emojis
+        Add final conclusion at the end
         """)
         ),
     )
@@ -375,7 +381,7 @@ if __name__ == "__main__":
     # Run the agent with tools
     print()
     print(f"Tool-using agent ({model_id}):")
-    result = agent.invoke({
+    result = merge_request_agent.invoke({
         "messages": [
             {
                 "role": "user",
@@ -384,7 +390,9 @@ if __name__ == "__main__":
         ]
     })
 
-    print(result["messages"][-1].content)
+    initial_review = result["messages"][-1].content
+
+    print(initial_review)
 
     with open(file="result.txt", mode="w", encoding="utf-8") as file:
         print(result, file=file)
