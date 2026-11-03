@@ -57,7 +57,9 @@ if __name__ == "__main__":
     warnings.filterwarnings("ignore")
 
     os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = 'true'
-    os.environ["HF_TOKEN"] = HF_TOKEN
+    if not os.environ["HF_TOKEN"]:
+        print("HF_TOKEN not set")
+        exit(1)
 
     print(f"PyTorch Version: {torch.__version__}")
     print(f"PyTorch Cuda:    {torch.version.cuda}")
@@ -128,7 +130,6 @@ if __name__ == "__main__":
         task="text-generation",
         max_new_tokens=MAX_NEW_TOKENS,
         do_sample=False,
-        huggingfacehub_api_token=HF_TOKEN
     )
 
     chat_model = ChatHuggingFace(llm=llm)
@@ -141,7 +142,7 @@ if __name__ == "__main__":
             line_start: int | None = None,
             line_end: int | None = None,
     ) -> str:
-        """Retrieve code from the Live555 codebase.
+        """Retrieve code from the repository.
 
         Use query for semantic search across the codebase.
         Use path and optional line_start/line_end to inspect a

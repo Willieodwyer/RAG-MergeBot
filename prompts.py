@@ -180,5 +180,6 @@ Do not include a general code-quality essay, a summary of every file changed, or
 Use markdown format
 Short, concise
 Use emojis
+As a final step, ensure you only show findings that are actually incorrect.
 Add final conclusion at the end
 """
