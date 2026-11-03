@@ -1,4 +1,4 @@
-
+# Make sure to add your HF_TOKEN to the env
 import os
 import requests
 
