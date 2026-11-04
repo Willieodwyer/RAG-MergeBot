@@ -1,17 +1,19 @@
-
 import hashlib
 import json
+import sys
 from functools import lru_cache
 from pathlib import Path
+from tree_sitter import Language, Parser
+import tree_sitter_cpp
 
 import faiss
 import numpy as np
 import torch
 from sentence_transformers import SentenceTransformer
 
-
-CHUNK_SIZE = 500
+CHUNK_SIZE = 1500  # Your target size in characters
 CHUNK_OVERLAP = 100
+
 BATCH_SIZE = 64
 TOP_K = 3
 
@@ -58,11 +60,8 @@ def create_embeddings(texts, model_name: str):
 # --------------------------------------------------
 
 def load_documents(repo_path: Path):
-
     if not repo_path.is_dir():
-        raise FileNotFoundError(
-            f"Repository directory not found: {repo_path}"
-        )
+        raise FileNotFoundError(f"Repository directory not found: {repo_path}")
 
     documents = []
 
@@ -95,31 +94,22 @@ def load_documents(repo_path: Path):
     return documents
 
 
-def split_documents(documents):
-
+def chunk_documents(documents):
     chunks = []
 
     for document in documents:
-
         content = document["content"]
         source = document["source"]
 
         start = 0
-
         while start < len(content):
 
-            end = min(
-                start + CHUNK_SIZE,
-                len(content)
-            )
+            end = min(start + CHUNK_SIZE, len(content))
 
             chunk = content[start:end]
 
             if chunk.strip():
-
-                line_start = content.count(
-                    "\n", 0, start
-                ) + 1
+                line_start = content.count("\n", 0, start) + 1
 
                 chunks.append({
                     "source": source,
@@ -139,11 +129,7 @@ def split_documents(documents):
 # Cache validation
 # --------------------------------------------------
 
-def repository_fingerprint(
-    repo_path: Path,
-    embedding_model: str
-):
-
+def repository_fingerprint(repo_path: Path, embedding_model: str):
     files = []
 
     source_files = sorted(
@@ -154,7 +140,6 @@ def repository_fingerprint(
     for path in source_files:
 
         if path.is_file():
-
             stat = path.stat()
 
             files.append({
@@ -185,10 +170,10 @@ def repository_fingerprint(
 class CodeVectorStore:
 
     def __init__(
-        self,
-        index,
-        metadata,
-        embedding_model: str
+            self,
+            index,
+            metadata,
+            embedding_model: str
     ):
         self.index = index
         self.metadata = metadata
@@ -240,11 +225,10 @@ class CodeVectorStore:
         )
 
         with open(
-            path / "metadata.json",
-            "w",
-            encoding="utf-8"
+                path / "metadata.json",
+                "w",
+                encoding="utf-8"
         ) as file:
-
             json.dump(
                 self.metadata,
                 file,
@@ -254,9 +238,9 @@ class CodeVectorStore:
 
     @classmethod
     def load(
-        cls,
-        path: Path,
-        embedding_model: str
+            cls,
+            path: Path,
+            embedding_model: str
     ):
 
         index = faiss.read_index(
@@ -264,10 +248,9 @@ class CodeVectorStore:
         )
 
         with open(
-            path / "metadata.json",
-            encoding="utf-8"
+                path / "metadata.json",
+                encoding="utf-8"
         ) as file:
-
             metadata = json.load(file)
 
         if index.ntotal != len(metadata):
@@ -302,8 +285,8 @@ class CodeVectorStore:
         results = []
 
         for score, idx in zip(
-            scores[0],
-            indices[0]
+                scores[0],
+                indices[0]
         ):
 
             if idx < 0:
@@ -322,14 +305,13 @@ class CodeVectorStore:
 # --------------------------------------------------
 
 def initialize_vector_store(
-    vector_db_path: Path,
-    embedding_model: str,
-    repo_path: Path
+        vector_db_path: Path,
+        embedding_model: str,
+        repo_path: Path
 ):
-
     model_directory = embedding_model.replace("/", "--")
 
-    vector_path = vector_db_path / model_directory
+    vector_path = vector_db_path / model_directory / repo_path
     manifest_path = vector_path / "manifest.json"
 
     fingerprint = repository_fingerprint(
@@ -337,43 +319,27 @@ def initialize_vector_store(
         embedding_model
     )
 
-    if (
-        (vector_path / "index.faiss").exists()
-        and (vector_path / "metadata.json").exists()
-        and manifest_path.exists()
-    ):
-
+    if ((vector_path / "index.faiss").exists()
+            and (vector_path / "metadata.json").exists()
+            and manifest_path.exists()):
         try:
-            with open(
-                manifest_path,
-                encoding="utf-8"
-            ) as file:
-
+            with open(manifest_path, encoding="utf-8") as file:
                 manifest = json.load(file)
 
             if manifest.get("fingerprint") == fingerprint:
-
                 print("Loading existing FAISS vector store...")
 
-                return CodeVectorStore.load(
-                    vector_path,
-                    embedding_model
-                )
+                return CodeVectorStore.load(vector_path, embedding_model)
 
         except (OSError, json.JSONDecodeError, RuntimeError) as exc:
-
-            print(
-                f"[WARNING] Vector cache is invalid: {exc}"
-            )
+            print(f"[WARNING] Vector cache is invalid: {exc}")
 
     print("Building FAISS vector store...")
 
     documents = load_documents(repo_path)
-
     print(f"Loaded {len(documents)} source files")
 
-    chunks = split_documents(documents)
-
+    chunks = chunk_documents(documents)
     print(f"Created {len(chunks)} chunks")
 
     vector_store = CodeVectorStore.build(
@@ -383,17 +349,8 @@ def initialize_vector_store(
 
     vector_store.save(vector_path)
 
-    with open(
-        manifest_path,
-        "w",
-        encoding="utf-8"
-    ) as file:
-
-        json.dump(
-            {"fingerprint": fingerprint},
-            file,
-            indent=2
-        )
+    with open(manifest_path, "w", encoding="utf-8") as file:
+        json.dump({"fingerprint": fingerprint}, file, indent=2)
 
     print("Vector store saved!")
 

@@ -1,9 +1,21 @@
+# py -3.12 -m venv .venv
+# pip install langchain langchain-core langchain-huggingface langchain-community
+# pip install transformers sentence-transformers accelerate faiss-cpu
+# pip install tree-sitter tree-sitter-cpp
+#
+# For CPU PyTorch
+#   pip install torch
+# For CUDA PyTorch
+#   Go to: https://pytorch.org/
+#   Copy the installation suggestion
+#   Something like: pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
+
 from pathlib import Path
 
 from agents import Agent, Runner, function_tool
 
 from Benchmark import benchmark
-from CodeVectorStore import initialize_vector_store, TOP_K, EMBEDDING_MODEL
+from VectorStore import initialize_vector_store, TOP_K, EMBEDDING_MODEL
 from Inputs import *
 from Prompts import *
 
