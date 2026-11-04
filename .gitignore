@@ -6,6 +6,12 @@ __pycache__/
 # C extensions
 *.so
 
+# Custom
+live
+Core
+result.txt
+vector_cache
+
 # InteliJ
 .idea/
 
