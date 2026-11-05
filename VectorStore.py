@@ -11,6 +11,8 @@ import numpy as np
 import torch
 from sentence_transformers import SentenceTransformer
 
+from Utils import load_documents
+
 CHUNK_SIZE = 1500  # Your target size in characters
 CHUNK_OVERLAP = 100
 
@@ -53,45 +55,6 @@ def create_embeddings(texts, model_name: str):
     )
 
     return np.ascontiguousarray(vectors, dtype=np.float32)
-
-
-# --------------------------------------------------
-# Repository loading and chunking
-# --------------------------------------------------
-
-def load_documents(repo_path: Path):
-    if not repo_path.is_dir():
-        raise FileNotFoundError(f"Repository directory not found: {repo_path}")
-
-    documents = []
-
-    files = sorted(
-        list(repo_path.rglob("*.cpp")) +
-        list(repo_path.rglob("*.hh"))
-    )
-
-    for path in files:
-
-        if not path.is_file():
-            continue
-
-        try:
-            content = path.read_text(
-                encoding="utf-8",
-                errors="replace"
-            )
-
-        except OSError as exc:
-            print(f"[WARNING] Cannot read {path}: {exc}")
-            continue
-
-        if content.strip():
-            documents.append({
-                "source": str(path.resolve()),
-                "content": content
-            })
-
-    return documents
 
 
 def chunk_documents(documents):

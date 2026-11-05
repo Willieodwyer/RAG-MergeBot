@@ -2,6 +2,7 @@
 # pip install langchain langchain-core langchain-huggingface langchain-community
 # pip install transformers sentence-transformers accelerate faiss-cpu
 # pip install tree-sitter tree-sitter-cpp
+# pip install bm25s
 #
 # For CPU PyTorch
 #   pip install torch
@@ -14,6 +15,7 @@ from pathlib import Path
 
 from agents import Agent, Runner, function_tool
 
+from BM25Store import initialise_bm25_store
 from Benchmark import benchmark
 from VectorStore import initialize_vector_store, TOP_K, EMBEDDING_MODEL
 from Inputs import *
@@ -23,16 +25,24 @@ from Prompts import *
 # Configuration
 # --------------------------------------------------
 
-VECTOR_DB_PATH = Path("vector_cache")
-REPO_PATH = Path("live")
+REPO_PATH = Path("Core")
+CACHE_PATH = Path("cache")
 
-OPENAI_MODEL = "gpt-5.4-mini"
+model_costs = {
+    "gpt-6-astra": {"input": 10.0, "output": 50.0},
+    "gpt-6.1-sol": {"input": 2.0, "output": 10.0},
+    "gpt-6.1-terra": {"input": 1.0, "output": 5.0},
+    "gpt-6.1-luna": {"input": 0.1, "output": 0.5},
+    "gpt-5.4-mini": {"input": 0.75, "output": 4.5},
+}
+OPENAI_MODEL = "gpt-6-astra"
 
 # --------------------------------------------------
 # Repository context
 # --------------------------------------------------
 
 vector_store = None
+bm25_store = None
 
 
 @function_tool
@@ -56,7 +66,7 @@ def get_context(
 
     query_result = []
 
-    with benchmark(f"Get context: {query}, {path}"):
+    with benchmark(f"Get context: {query} | {path} | {line_start} | {line_end}"):
 
         # Inspect a specific source file
 
@@ -144,6 +154,23 @@ def get_context(
     return result
 
 
+@function_tool
+def search_lines(
+        query: str | None = None
+) -> str:
+    """
+    BM25 search the codebase for singular strings
+    """
+
+    global bm25_store
+
+    with benchmark(f"Search: {query}"):
+        search_result = bm25_store.search(query)
+        print(search_result)
+        print()
+        return search_result
+
+
 # --------------------------------------------------
 # OpenAI Agent
 # --------------------------------------------------
@@ -153,7 +180,7 @@ def create_merge_request_agent():
         name="Merge Request Expert",
         instructions=MergeRequestExpert,
         model=OPENAI_MODEL,
-        tools=[get_context]
+        tools=[get_context, search_lines]
     )
 
 
@@ -168,9 +195,15 @@ if __name__ == "__main__":
     print(f"Model: {OPENAI_MODEL}")
     print(f"Local embeddings: {EMBEDDING_MODEL}")
 
+    with benchmark("Initialize bm25 store"):
+        bm25_store = initialise_bm25_store(
+            CACHE_PATH,
+            REPO_PATH
+        )
+
     with benchmark("Initialize vector store"):
         vector_store = initialize_vector_store(
-            VECTOR_DB_PATH,
+            CACHE_PATH,
             EMBEDDING_MODEL,
             REPO_PATH
         )
@@ -185,9 +218,22 @@ if __name__ == "__main__":
             max_turns=50
         )
 
-    initial_review = result.final_output
+    print("\n--- REQUEST COST ---")
+    usage = result.context_wrapper.usage
+    print(f"Input tokens:  {usage.input_tokens:,}")
+    print(f"Output tokens: {usage.output_tokens:,}")
+    print(f"Total tokens:  {usage.total_tokens:,}")
+
+    input_cost = (usage.input_tokens / 1_000_000) * model_costs[OPENAI_MODEL]["input"]
+    output_cost = (usage.output_tokens / 1_000_000) * model_costs[OPENAI_MODEL]["output"]
+    total_cost = input_cost + output_cost
+
+    print(f"Input cost:  ${input_cost:.6f}")
+    print(f"Output cost: ${output_cost:.6f}")
+    print(f"Total cost:  ${total_cost:.6f}")
 
     print("\n--- MERGE REQUEST REVIEW ---\n")
+    initial_review = result.final_output
     print(initial_review)
 
     with open(
